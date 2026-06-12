@@ -132,3 +132,263 @@ script deve:
 Arquivos de entrega
 * helpdesk_TRIO_NOMES.py — Classes + bloco de demonstração
 * app.py — Aplicação Flask com todos os endpoints
+
+# 🎫 HelpDesk Pro — Ciesa Solutions
+
+> Sistema interno de gestão de chamados de suporte técnico, desenvolvido em Python com Orientação a Objetos e exposto via API REST com Flask.
+
+---
+
+## 📋 Contexto
+
+A **Ciesa Solutions** é uma empresa de tecnologia com mais de 300 clientes corporativos que contratam suporte técnico mensal. O controle de chamados era feito em planilhas — um processo lento e sujeito a erros — e a empresa chegou a perder contratos por descumprir SLAs sem perceber que havia chamados críticos em aberto.
+
+Este projeto foi desenvolvido como **Avaliação (AV)** da disciplina de **Paradigmas de Linguagens de Programação** do curso de Análise e Desenvolvimento de Sistemas — **CIESA**, Manaus/AM.
+
+---
+
+## 🗂️ Estrutura do Repositório
+
+```
+AV-Python-Ciesa-Solution/
+├── helpdesk_levimoda_3.py   # Classes principais + cenário de demonstração
+├── app.py                   # API REST com Flask
+└── .gitignore
+```
+
+---
+
+## ⚙️ Tecnologias
+
+- **Python 3.x**
+- **Flask** — API REST
+- **datetime** — cálculo de SLA e tempo decorrido
+- **collections.defaultdict** — relatórios e painel operacional
+
+---
+
+## 🏗️ Arquitetura — Orientação a Objetos
+
+### `Chamado`
+
+Representa um chamado de suporte aberto por um cliente.
+
+| Atributo | Descrição |
+|---|---|
+| `numero` | Identificador único sequencial (gerado automaticamente) |
+| `titulo` | Título resumido do problema |
+| `descricao` | Descrição detalhada |
+| `cliente` | Nome do cliente |
+| `prioridade` | `baixa` / `media` / `alta` / `critica` |
+| `status` | Estado atual do chamado |
+| `data_abertura` | `datetime` do momento da criação |
+| `sla_horas` | SLA calculado automaticamente pela prioridade |
+| `tecnico` | ID do técnico responsável (ou `None`) |
+| `historico` | Lista de ações registradas com data e responsável |
+
+**Métodos principais:** `alterar_status()`, `esta_em_atraso()`, `tempo_decorrido()`, `registrar_acao()`, `to_dict()`
+
+---
+
+### `Tecnico`
+
+Representa um técnico de suporte da equipe.
+
+| Atributo | Descrição |
+|---|---|
+| `id_tecnico` | Identificador único sequencial |
+| `nome` | Nome do técnico |
+| `especialidades` | `set` de categorias de atuação |
+| `chamados_ativos` | Lista dos números de chamados em andamento |
+| `capacidade_maxima` | Limite de chamados simultâneos (padrão: 5) |
+| `disponivel` | `True` se `len(chamados_ativos) < capacidade_maxima` |
+
+**Métodos principais:** `atribuir_chamado()`, `liberar_chamado()`, `tem_especialidade()`, `to_dict()`
+
+---
+
+### `CentralDeSupporte`
+
+Orquestra toda a operação: chamados, técnicos, fila e relatórios.
+
+| Atributo | Descrição |
+|---|---|
+| `empresa` | Nome da empresa |
+| `chamados` | **Dicionário** `{numero: Chamado}` — busca em **O(1)** |
+| `tecnicos` | Dicionário `{id: Tecnico}` |
+| `fila_nao_atribuidos` | Lista de números de chamados aguardando técnico |
+
+**Métodos principais:** `abrir_chamado()`, `registrar_tecnico()`, `buscar_chamado()`, `atribuir_tecnico()`, `atribuicao_automatica()`, `resolver_chamado()`, `fechar_chamado()`, `listar_em_atraso()`, `relatorio_por_prioridade()`, `painel_operacional()`
+
+> **Por que dicionário para `chamados`?**  
+> O requisito crítico do cliente era localizar qualquer chamado pelo número em **tempo constante**, mesmo com milhares de registros. Um dicionário Python (`dict`) implementa uma **hash table**, garantindo acesso médio **O(1)** independentemente do volume de dados — ao contrário de listas, onde a busca seria O(n).
+
+---
+
+## 🔄 Fluxo de Status dos Chamados
+
+```
+aberto ──► em_atendimento ──► aguardando_cliente
+                │                      │
+                │◄──────────────────────┘
+                │
+                ▼
+            resolvido ──► fechado
+```
+
+Qualquer tentativa de transição fora deste fluxo lança um `ValueError` com mensagem descritiva.
+
+---
+
+## ⏱️ SLA Automático
+
+| Prioridade | SLA |
+|---|---|
+| 🔴 Crítica | 4 horas |
+| 🟠 Alta | 8 horas |
+| 🟡 Média | 24 horas |
+| 🟢 Baixa | 72 horas |
+
+O cálculo de atraso usa `datetime.timedelta`, comparando o tempo decorrido desde a abertura com o SLA definido. Chamados com status `resolvido` ou `fechado` nunca aparecem como atrasados.
+
+---
+
+## 🤖 Balanceamento de Carga Automático
+
+O método `atribuicao_automatica()` percorre a fila de chamados não atribuídos e distribui cada um ao técnico disponível com **menos chamados ativos**. Em caso de empate, o técnico com **menor `id_tecnico`** é priorizado.
+
+---
+
+## 🚀 Como Executar
+
+### Pré-requisitos
+
+```bash
+pip install flask
+```
+
+### Rodar a demonstração (modo terminal)
+
+Executa o cenário de demonstração completo: criação de técnicos, abertura de chamados, atribuição automática, resolução, fechamento, simulação de atraso e painel operacional.
+
+```bash
+python helpdesk_levimoda_3.py
+```
+
+### Subir a API REST
+
+```bash
+python app.py
+```
+
+O servidor sobe em `http://localhost:5000` com `debug=True`.
+
+---
+
+## 🌐 Endpoints da API
+
+Todas as rotas retornam **JSON**. Erros incluem o campo `"erro"` com mensagem descritiva e o código HTTP adequado.
+
+### Chamados
+
+| Método | Rota | Descrição | Status |
+|---|---|---|---|
+| `POST` | `/chamados` | Abre um novo chamado | `201` |
+| `GET` | `/chamados` | Lista todos (filtro opcional: `?status=`) | `200` |
+| `GET` | `/chamados/<numero>` | Busca chamado pelo número | `200` / `404` |
+| `PATCH` | `/chamados/<numero>/status` | Altera o status do chamado | `200` / `400` / `404` |
+| `PATCH` | `/chamados/<numero>/resolver` | Resolve um chamado | `200` / `400` / `403` / `404` |
+| `GET` | `/chamados/em-atraso` | Lista chamados fora do SLA, ordenados | `200` |
+
+### Técnicos
+
+| Método | Rota | Descrição | Status |
+|---|---|---|---|
+| `POST` | `/tecnicos` | Registra novo técnico | `201` |
+| `GET` | `/tecnicos` | Lista técnicos (filtro opcional: `?disponivel=true`) | `200` |
+
+### Operações
+
+| Método | Rota | Descrição | Status |
+|---|---|---|---|
+| `POST` | `/atribuicao/automatica` | Executa atribuição automática da fila | `200` |
+| `GET` | `/painel` | Painel operacional completo | `200` |
+
+---
+
+### Exemplos de Request/Response
+
+**Abrir chamado**
+```http
+POST /chamados
+Content-Type: application/json
+
+{
+  "titulo": "Servidor fora do ar",
+  "descricao": "Servidor de produção não responde desde as 08h.",
+  "cliente": "Empresa A",
+  "prioridade": "critica"
+}
+```
+
+**Registrar técnico**
+```http
+POST /tecnicos
+Content-Type: application/json
+
+{
+  "nome": "Alice",
+  "especialidades": ["Redes", "Hardware"],
+  "capacidade_maxima": 4
+}
+```
+
+**Alterar status**
+```http
+PATCH /chamados/1/status
+Content-Type: application/json
+
+{
+  "novo_status": "em_atendimento",
+  "responsavel": "Alice"
+}
+```
+
+**Resolver chamado**
+```http
+PATCH /chamados/1/resolver
+Content-Type: application/json
+
+{
+  "id_tecnico": 1,
+  "descricao_solucao": "Cabo de rede reconectado ao switch."
+}
+```
+
+---
+
+## 🧪 Cenário de Demonstração
+
+Ao rodar `helpdesk_levimoda_3.py` diretamente, o script executa automaticamente:
+
+1. Criação da central **"Ciesa Solutions"** com 4 técnicos de especialidades variadas
+2. Abertura de 8 chamados com prioridades e clientes diferentes
+3. Execução de `atribuicao_automatica()` com exibição dos resultados
+4. Resolução de 2 chamados e fechamento de 1
+5. Tentativa de transição de status inválida com tratamento de exceção
+6. Simulação de chamado em atraso e exibição de `listar_em_atraso()`
+7. Exibição do `painel_operacional()` completo em JSON
+
+---
+
+## 🏫 Informações Acadêmicas
+
+| | |
+|---|---|
+| **Instituição** | Centro Universitário de Ensino Superior do Amazonas — CIESA |
+| **Curso** | Análise e Desenvolvimento de Sistemas |
+| **Disciplina** | Paradigmas de Linguagens de Programação |
+| **Tipo** | Avaliação (AV) — Python com POO e API REST |
+
+---
+
