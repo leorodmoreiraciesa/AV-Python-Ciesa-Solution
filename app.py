@@ -116,6 +116,12 @@ def exec_atribuicao_automatica():
 def obter_painel():
     return jsonify(central.painel_operacional()), 200
 
+# FEATURE B: Rota para retornar o ranking de desempenho solicitado pelo Gerente
+@app.route('/tecnicos/ranking', methods=['GET'])
+def obter_ranking_tecnicos():
+    ranking = central.ranking_tecnicos()
+    return jsonify(ranking), 200
+
 if __name__ == '__main__':
     # Rodando o servidor
     app.run(debug=True, port=5000)

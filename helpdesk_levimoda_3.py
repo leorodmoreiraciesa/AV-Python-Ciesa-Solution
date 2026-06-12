@@ -91,11 +91,12 @@ class Tecnico:
         self.nome = nome
         self.especialidades = set(especialidades)
         self.chamados_ativos = []
+        self.chamados_resolvidos = [] # FEATURE B: Histórico de chamados resolvidos pelo técnico
         self.capacidade_maxima = capacidade_maxima
         self.disponivel = True
 
     def __str__(self):
-        return f"Tecnico {self.nome} (ID: {self.id_tecnico}) | Chamados: {len(self.chamados_ativos)}/{self.capacidade_maxima} | Disp: {self.disponivel}"
+        return f"Tecnico {self.nome} (ID: {self.id_tecnico}) | Chamados Ativos: {len(self.chamados_ativos)} | Resolvidos: {len(self.chamados_resolvidos)} | Disp: {self.disponivel}"
 
     def atribuir_chamado(self, numero):
         if len(self.chamados_ativos) >= self.capacidade_maxima:
@@ -115,20 +116,38 @@ class Tecnico:
     def tem_especialidade(self, categoria):
         return categoria in self.especialidades
 
+    def desempenho(self):
+        # FEATURE B: Métricas de desempenho do técnico
+        total_ativos = len(self.chamados_ativos)
+        total_resolvidos = len(self.chamados_resolvidos)
+        total_geral = total_ativos + total_resolvidos
+        
+        taxa_resolucao = 0.0
+        if total_geral > 0:
+            taxa_resolucao = (total_resolvidos / total_geral) * 100
+            
+        return {
+            "total_ativos": total_ativos,
+            "total_resolvidos": total_resolvidos,
+            "taxa_resolucao": round(taxa_resolucao, 2)
+        }
+
     def to_dict(self):
         return {
             'id_tecnico': self.id_tecnico,
             'nome': self.nome,
             'especialidades': list(self.especialidades),
             'chamados_ativos': self.chamados_ativos,
+            'chamados_resolvidos': self.chamados_resolvidos,
             'capacidade_maxima': self.capacidade_maxima,
-            'disponivel': self.disponivel
+            'disponivel': self.disponivel,
+            'desempenho': self.desempenho() # FEATURE B: Adicionado ao JSON descritivo
         }
 
 class CentralDeSupporte:
     def __init__(self, empresa):
         self.empresa = empresa
-        self.chamados = {} # Dicionário para garantir busca O(1)
+        self.chamados = {} 
         self.tecnicos = {}
         self.fila_nao_atribuidos = []
 
@@ -166,13 +185,11 @@ class CentralDeSupporte:
         atribuidos = 0
         chamados_atribuidos_info = []
         
-        # Filtra apenas técnicos disponíveis
         tecnicos_disp = [t for t in self.tecnicos.values() if t.disponivel]
         if not tecnicos_disp:
             return 0, []
 
         for numero_chamado in list(self.fila_nao_atribuidos):
-            # Ordena por carga (menor primeiro) e empates pelo menor ID
             tecnicos_disp.sort(key=lambda t: (len(t.chamados_ativos), t.id_tecnico))
             
             tecnico_escolhido = tecnicos_disp[0]
@@ -186,7 +203,7 @@ class CentralDeSupporte:
                 pass
                 
             if not tecnicos_disp:
-                break # Sem técnicos disponíveis
+                break 
                 
         return atribuidos, chamados_atribuidos_info
 
@@ -199,15 +216,22 @@ class CentralDeSupporte:
             
         chamado.alterar_status('resolvido', f"Tecnico ID: {id_tecnico}")
         chamado.registrar_acao(f"Solução: {descricao_solucao}", f"Tecnico ID: {id_tecnico}")
+        
+        tecnico.chamados_resolvidos.append(numero) # FEATURE B: Registra no histórico do técnico
         tecnico.liberar_chamado(numero)
 
     def fechar_chamado(self, numero):
         chamado = self.buscar_chamado(numero)
         chamado.alterar_status('fechado', "Sistema/Admin")
 
+    def ranking_tecnicos(self):
+        # FEATURE B: Ordena os técnicos de forma decrescente pela taxa de resolução
+        lista_tecnicos = list(self.tecnicos.values())
+        lista_tecnicos.sort(key=lambda t: t.desempenho()["taxa_resolucao"], reverse=True)
+        return [t.to_dict() for t in lista_tecnicos]
+
     def listar_em_atraso(self):
         em_atraso = [c for c in self.chamados.values() if c.esta_em_atraso()]
-        # Ordena do mais atrasado (data de abertura menor/mais antiga) ao mais recente
         em_atraso.sort(key=lambda c: c.data_abertura)
         return em_atraso
 
@@ -230,8 +254,6 @@ class CentralDeSupporte:
             clientes_cont[c.cliente] += 1
             
         tecnicos_disp = sum(1 for t in self.tecnicos.values() if t.disponivel)
-        
-        # Top 3 clientes
         top_clientes = sorted(clientes_cont.items(), key=lambda item: item[1], reverse=True)[:3]
 
         return {
@@ -246,7 +268,6 @@ if __name__ == '__main__':
     print("--- INICIANDO DEMONSTRAÇÃO HELPDESK PRO ---")
     central = CentralDeSupporte("Ciesa Solutions")
 
-    # 1. Registrar 4 Técnicos
     print("\n[+] Registrando Técnicos...")
     t1 = central.registrar_tecnico("Alice", ["Redes", "Hardware"])
     t2 = central.registrar_tecnico("Bruno", ["Software", "Banco de Dados"])
@@ -254,9 +275,7 @@ if __name__ == '__main__':
     t4 = central.registrar_tecnico("Diana", ["Redes", "Software"], capacidade_maxima=2)
     for t in central.tecnicos.values(): print(t)
 
-    # 2. Abrir 8 chamados
     print("\n[+] Abrindo 8 Chamados...")
-    clientes = ["Empresa A", "Empresa B", "Empresa C", "Empresa A"]
     central.abrir_chamado("Sem internet", "Roteador não responde", "Empresa A", "alta")
     central.abrir_chamado("Erro no ERP", "Sistema não loga", "Empresa B", "critica")
     central.abrir_chamado("Mouse quebrado", "Troca de mouse", "Empresa C", "baixa")
@@ -267,13 +286,11 @@ if __name__ == '__main__':
     central.abrir_chamado("Erro 404 no site", "Portal fora do ar", "Empresa A", "alta")
     print(f"Chamados criados: {len(central.chamados)}")
 
-    # 3. Atribuição Automática
     print("\n[+] Executando Atribuição Automática...")
     qnt, atribuidos = central.atribuicao_automatica()
     print(f"Chamados atribuídos: {qnt}. Lista: {atribuidos}")
     for t in central.tecnicos.values(): print(t)
 
-    # 4. Simular resolução de 2 chamados e fechamento de 1
     print("\n[+] Resolvendo e Fechando chamados...")
     id_tecnico_chamado_1 = central.buscar_chamado(1).tecnico
     central.resolver_chamado(1, id_tecnico_chamado_1, "Cabo de rede reconectado.")
@@ -284,26 +301,25 @@ if __name__ == '__main__':
     central.fechar_chamado(2)
     print(f"Chamado 2 Status: {central.buscar_chamado(2).status}")
 
-    # 5. Forçar transição inválida
+    # FEATURE B DEMONSTRAÇÃO LOCAL: Exibindo o ranking após resoluções
+    print("\n[+] FEATURE B: Exibindo Ranking de Desempenho dos Técnicos...")
+    import json
+    print(json.dumps(central.ranking_tecnicos(), indent=2, ensure_ascii=False))
+
     print("\n[+] Tentativa de transição de status inválida...")
     try:
-        # Tentar fechar um chamado que está 'em_atendimento' direto para 'fechado'
         central.buscar_chamado(3).alterar_status('fechado', "Admin")
     except ValueError as e:
         print(f"SUCESSO NO TRATAMENTO DE ERRO: {e}")
 
-    # 6. Simular chamado em atraso
     print("\n[+] Simulando chamado em atraso...")
-    # Forçar a data de abertura para 10 horas atrás para um chamado de SLA 4h (Crítica)
-    chamado_atraso = central.buscar_chamado(5) # Chamado 5 é Crítica
+    chamado_atraso = central.buscar_chamado(5) 
     chamado_atraso.data_abertura = datetime.datetime.now() - datetime.timedelta(hours=10)
     
     atrasados = central.listar_em_atraso()
     for c in atrasados:
         print(f"EM ATRASO: {c}")
 
-    # 7. Painel Operacional
     print("\n[+] Painel Operacional...")
-    import json
     print(json.dumps(central.painel_operacional(), indent=2, ensure_ascii=False))
 
